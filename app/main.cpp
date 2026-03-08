@@ -5,6 +5,7 @@
 #include <iostream>
 #include <csignal>
 #include <atomic>
+#include <memory>
 
 using json = nlohmann::json;
 
@@ -60,6 +61,14 @@ static hfmm::Config load_config(const std::string& path) {
     if (j.contains("api_secret"))           cfg.api_secret           = j["api_secret"];
     if (j.contains("paper_trading"))        cfg.paper_trading        = j["paper_trading"];
     if (j.contains("status_interval_ms"))   cfg.status_interval_ms   = j["status_interval_ms"];
+    if (j.contains("telemetry") && j["telemetry"].is_object()) {
+        const auto& t = j["telemetry"];
+        if (t.contains("enabled"))           cfg.telemetry.enabled = t["enabled"];
+        if (t.contains("transport"))         cfg.telemetry.transport = t["transport"];
+        if (t.contains("host"))              cfg.telemetry.host = t["host"];
+        if (t.contains("port"))              cfg.telemetry.port = t["port"];
+        if (t.contains("flush_interval_ms")) cfg.telemetry.flush_interval_ms = t["flush_interval_ms"];
+    }
 
     // 4. Parse pairs array or fall back to backwards-compat single-pair fields
     if (j.contains("pairs") && j["pairs"].is_array()) {
@@ -96,6 +105,7 @@ int main(int argc, char** argv) {
     std::cout << "[main] HF Market Maker starting\n"
               << "  exchange:      " << cfg.exchange << "\n"
               << "  paper_trading: " << (cfg.paper_trading ? "yes" : "NO - LIVE") << "\n"
+              << "  telemetry:     " << (cfg.telemetry.enabled ? "enabled" : "disabled") << "\n"
               << "  pairs:         " << cfg.pairs.size() << "\n";
     for (const auto& [sym, pc] : cfg.pairs) {
         std::cout << "    " << pc.symbol
@@ -109,7 +119,7 @@ int main(int argc, char** argv) {
     std::signal(SIGINT,  signal_handler);
     std::signal(SIGTERM, signal_handler);
 
-    hfmm::Engine engine(cfg);
+    auto engine = std::make_unique<hfmm::Engine>(cfg);
 
     // Monitor shutdown flag in a detached approach:
     // Engine::run() blocks; we poll g_shutdown in a thread and call stop().
@@ -118,10 +128,10 @@ int main(int argc, char** argv) {
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
         std::cout << "\n[main] Shutdown signal received.\n";
-        engine.stop();
+        engine->stop();
     });
     watcher.detach();
 
-    engine.run();
+    engine->run();
     return 0;
 }

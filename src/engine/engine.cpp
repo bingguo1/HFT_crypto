@@ -11,6 +11,7 @@ Engine::Engine(const Config& cfg)
     : cfg_(cfg)
     , rest_(cfg_)
     , feed_(make_feed(cfg_, queue_))
+    , telemetry_(cfg_)
 {
     for (const auto& [sym, pc] : cfg_.pairs)
         pairs_.try_emplace(pc.symbol, pc, cfg_, rest_);
@@ -23,6 +24,7 @@ Engine::~Engine() {
 void Engine::run() {
     running_.store(true, std::memory_order_release);
     events_processed_.store(0, std::memory_order_relaxed);
+    telemetry_.start();
 
     // Start WebSocket feed (runs on ixwebsocket internal thread)
     feed_->start();
@@ -68,7 +70,11 @@ void Engine::run() {
             std::cout << std::fixed << std::setprecision(2)
                       << "[feed] events=" << window
                       << " in " << secs << "s"
-                      << " (" << eps << " ev/s), total=" << total << "\n";
+                      << " (" << eps << " ev/s), total=" << total
+                      << ", telemetry_sent=" << telemetry_.sent_count()
+                      << ", telemetry_dropped=" << telemetry_.dropped_count()
+                      << ", telemetry_q=" << telemetry_.queue_size()
+                      << "\n";
 
             last_feed_stats = now;
             last_event_count = total;
@@ -78,6 +84,7 @@ void Engine::run() {
 
     if (strategy_thread_.joinable()) strategy_thread_.join();
     feed_->stop();
+    telemetry_.stop();
     std::cout << "[engine] Stopped.\n";
 }
 
@@ -95,6 +102,7 @@ void Engine::strategy_loop() {
         }
 
         events_processed_.fetch_add(1, std::memory_order_relaxed);
+        telemetry_.enqueue(*ev);
 
         // Dispatch by symbol
         auto it = pairs_.find(ev->symbol);

@@ -96,6 +96,17 @@ struct PairConfig {
 };
 
 // -----------------------------------------------------------------------
+// TelemetryConfig - async market-event export settings
+// -----------------------------------------------------------------------
+struct TelemetryConfig {
+    bool        enabled{false};
+    std::string transport{"udp"};
+    std::string host{"127.0.0.1"};
+    int         port{9101};
+    int         flush_interval_ms{2};
+};
+
+// -----------------------------------------------------------------------
 // Config — loaded from config.json (global / exchange-level fields)
 // -----------------------------------------------------------------------
 struct Config {
@@ -109,6 +120,7 @@ struct Config {
 
     bool   paper_trading{true};
     int    status_interval_ms{1000};
+    TelemetryConfig telemetry{};
 
     std::unordered_map<std::string, PairConfig> pairs; // key: symbol
 };

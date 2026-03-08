@@ -28,6 +28,7 @@ add_library(hfmm_core STATIC
     src/feed/market_data_feed.cpp
     src/feed/binance_feed.cpp
     src/feed/coinbase_feed.cpp
+    src/monitoring/market_event_exporter.cpp
     src/engine/engine.cpp
 )
 

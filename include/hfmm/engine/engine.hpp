@@ -8,6 +8,7 @@
 #include "hfmm/core/ring_buffer.hpp"
 #include "hfmm/core/order_book.hpp"
 #include "hfmm/feed/market_data_feed.hpp"
+#include "hfmm/monitoring/market_event_exporter.hpp"
 #include "hfmm/strategy/avellaneda_stoikov.hpp"
 #include "hfmm/execution/binance_rest.hpp"
 #include "hfmm/execution/order_manager.hpp"
@@ -48,6 +49,7 @@ private:
     BinanceRest      rest_;
     std::unique_ptr<IMarketDataFeed> feed_;
     std::unordered_map<std::string, PairState> pairs_;
+    MarketEventExporter telemetry_;
 
     std::thread      strategy_thread_;
     std::atomic<bool> running_{false};

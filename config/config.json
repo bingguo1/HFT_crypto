@@ -4,6 +4,13 @@
   "api_secret": "",
   "paper_trading": true,
   "status_interval_ms": 1000,
+  "telemetry": {
+    "enabled": true,
+    "transport": "udp",
+    "host": "127.0.0.1",
+    "port": 9101,
+    "flush_interval_ms": 2
+  },
   "pairs": [
     {
       "symbol": "BTC-USD",

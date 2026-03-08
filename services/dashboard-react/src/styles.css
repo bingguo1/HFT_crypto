@@ -1,0 +1,40 @@
+:root {
+  --bg: #f6f4ed;
+  --ink: #1f2a37;
+  --card: #fffdf6;
+  --line: #d8cfbb;
+  --accent: #0f766e;
+  --danger: #b91c1c;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", "Source Sans 3", sans-serif;
+  color: var(--ink);
+  background: radial-gradient(circle at 20% 10%, #fff 0%, var(--bg) 45%, #ece7da 100%);
+}
+
+.page { max-width: 1100px; margin: 0 auto; padding: 20px; }
+.hero { margin-bottom: 18px; }
+.hero h1 { margin: 0; font-size: 2rem; letter-spacing: 0.02em; }
+.hero p { margin: 6px 0 10px; }
+
+.pill { display: inline-block; padding: 6px 10px; border-radius: 999px; font-size: 0.82rem; text-transform: uppercase; }
+.pill.on { background: #d1fae5; color: var(--accent); }
+.pill.off { background: #fee2e2; color: var(--danger); }
+
+.grid.two { display: grid; grid-template-columns: 1fr 2fr; gap: 14px; }
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #eee; }
+
+@media (max-width: 840px) {
+  .grid.two { grid-template-columns: 1fr; }
+}
