@@ -1,4 +1,5 @@
 #include "hfmm/feed/binance_feed.hpp"
+#include "hfmm/monitoring/market_event_exporter.hpp"
 #include <simdjson.h>
 #include <charconv>
 #include <algorithm>
@@ -6,8 +7,10 @@
 
 namespace hfmm {
 
-BinanceFeed::BinanceFeed(const Config& cfg, BookEventQueue& queue)
-    : cfg_(cfg), queue_(queue) {}
+BinanceFeed::BinanceFeed(const Config& cfg,
+                         BookEventQueue& queue,
+                         MarketEventExporter* telemetry)
+    : cfg_(cfg), queue_(queue), telemetry_(telemetry) {}
 
 BinanceFeed::~BinanceFeed() {
     stop();
@@ -56,6 +59,7 @@ void BinanceFeed::on_message(const ix::WebSocketMessagePtr& msg) {
         BookUpdateEvent ev;
         if (!parse_snapshot(msg->str.data(), msg->str.size(), ev)) break;
         while (!queue_.push(ev)) {} // spin-wait — should rarely happen
+        if (telemetry_ != nullptr) telemetry_->enqueue(ev);
         break;
     }
     default:

@@ -10,8 +10,8 @@ namespace hfmm {
 Engine::Engine(const Config& cfg)
     : cfg_(cfg)
     , rest_(cfg_)
-    , feed_(make_feed(cfg_, queue_))
     , telemetry_(cfg_)
+    , feed_(make_feed(cfg_, queue_, &telemetry_))
 {
     for (const auto& [sym, pc] : cfg_.pairs)
         pairs_.try_emplace(pc.symbol, pc, cfg_, rest_);
@@ -102,7 +102,6 @@ void Engine::strategy_loop() {
         }
 
         events_processed_.fetch_add(1, std::memory_order_relaxed);
-        telemetry_.enqueue(*ev);
 
         // Dispatch by symbol
         auto it = pairs_.find(ev->symbol);

@@ -1,6 +1,6 @@
-# HF Market Making — C++ / Binance / Avellaneda-Stoikov
+# HF Market Making — C++ / Avellaneda-Stoikov + Monitoring Stack
 
-A low-latency market making engine targeting Binance spot markets. The system subscribes to Binance's WebSocket depth feed, maintains a local L2 order book, computes optimal bid/ask quotes using the Avellaneda-Stoikov model, and manages a single resting bid and ask order. Paper trading mode is on by default; live trading requires API credentials.
+A low-latency market making engine with an external monitoring and persistence stack. The C++ core subscribes to exchange WebSocket depth feeds, maintains local L2 books, computes optimal quotes, and manages orders. A FastAPI ingest sidecar and a React dashboard were added for telemetry, database persistence, and live monitoring.
 
 ---
 
@@ -30,36 +30,56 @@ A low-latency market making engine targeting Binance spot markets. The system su
 
 ## Architecture Overview
 
-```
-                    Binance WebSocket
-                         │
-                    ┌────▼────────────┐
-                    │ MarketDataFeed  │  ixwebsocket thread
-                    │  (WS parser)   │
-                    └────┬────────────┘
-                         │ BookUpdateEvent (stack-allocated)
-                         ▼
-                   SpscRingBuffer<1024>     ← lock-free SPSC
-                         │
-                    ┌────▼────────────┐
-                    │ Strategy Thread │
-                    │                 │
-                    │  OrderBook      │  apply snapshot / delta
-                    │     │           │
-                    │  AvellanedaStoikov  compute bid/ask prices
-                    │     │           │
-                    │  OrderManager   │  reprice / simulate fills
-                    └─────────────────┘
-                         │
-               ┌─────────▼──────────┐
-               │   BinanceRest      │  paper: no-op
-               │  (libcurl + HMAC)  │  live:  POST /api/v3/order
-               └────────────────────┘
+```text
+        Exchange WebSocket (Coinbase/Binance)
+              |
+              v
+        +---------------------------------+
+        |          MarketDataFeed         |   ixwebsocket thread
+        |            (WS parser)          |
+        +---------------------------------+
+              |
+         BookUpdateEvent (stack-allocated)
+           _________|_____________________________________
+          /                                          \
+         v                                            v
+   +---------------------------------+    +---------------------------------+
+   |       SpscRingBuffer<1024>      |    |   Async telemetry UDP exporter  |
+   +---------------------------------+    +---------------------------------+
+         |                                            |
+         |                                            v
+         |                              +---------------------------------+
+         |                              |      FastAPI ingest service     |
+         |                              +---------------------------------+
+         |                                            |
+         |                                            +--> PostgreSQL/TimescaleDB
+         |                                            |
+         |                                            +--> REST + WebSocket API
+         |                                                       |
+         |                                                       v
+         |                                         +--------------------------+
+         |                                         |      React dashboard     |
+         |                                         +--------------------------+
+         |
+         v
+       +---------------------------------+
+       |         Strategy Thread         |
+       +---------------------------------+
+       | OrderBook                       |   apply snapshot / delta
+       | AvellanedaStoikov               |   compute bid/ask prices
+       | OrderManager                    |   reprice / simulate fills
+       +---------------------------------+
+         |
+         v
+       +---------------------------------+
+       |           BinanceRest           |   paper: no-op
+       |         (libcurl + HMAC)        |   live: POST /api/v3/order
+       +---------------------------------+
 
-         Main thread: status prints, signal handling
+       Main thread: status prints, signal handling
 ```
 
-The system is intentionally single-market (one symbol, one bid, one ask) to keep the hot path simple and auditable.
+The strategy hot path stays lock-free and non-blocking. Telemetry export is asynchronous and drop-on-backpressure to avoid trading-path stalls.
 
 ---
 
@@ -87,12 +107,19 @@ hf_marketmaking/
 ├── src/                        # .cpp implementations
 │   ├── core/order_book.cpp
 │   ├── feed/market_data_feed.cpp
+│   ├── feed/binance_feed.cpp
+│   ├── feed/coinbase_feed.cpp
 │   ├── strategy/avellaneda_stoikov.cpp
 │   ├── execution/binance_rest.cpp
 │   ├── execution/order_manager.cpp
+│   ├── monitoring/market_event_exporter.cpp
 │   └── engine/engine.cpp
 ├── app/
-│   └── main.cpp               # Entry point
+│   ├── main.cpp               # Entry point
+│   └── coinbase_level2_recorder.cpp
+├── services/
+│   ├── ingest-fastapi/        # UDP ingest + DB persistence + APIs
+│   └── dashboard-react/       # live monitoring UI
 ├── tests/
 │   ├── CMakeLists.txt
 │   ├── test_order_book.cpp
@@ -416,38 +443,56 @@ No mutex is used on the hot path. The only synchronisation primitives are:
 
 ## Configuration Reference
 
-All parameters live in `config/config.json`:
+Runtime parameters live in `config/config.json`:
 
 ```json
 {
-  "symbol":               "BTCUSDT",
-  "ws_endpoint":          "wss://testnet.binance.vision",
-  "rest_endpoint":        "https://testnet.binance.vision",
+  "exchange":             "coinbase",
+  "ws_endpoint":          "wss://advanced-trade-ws.coinbase.com",
+  "rest_endpoint":        "https://api.coinbase.com",
   "api_key":              "",
   "api_secret":           "",
 
-  "gamma":                0.1,    // risk aversion [0.01 – 1.0]
-  "sigma":                0.02,   // initial volatility; updated online
-  "k":                    1.5,    // order arrival rate
-  "T":                    60.0,   // time horizon seconds
-  "base_qty":             0.001,  // BTC per order
-  "max_inventory":        0.01,   // max net BTC position
-  "min_spread_bps":       1.0,    // minimum spread floor
-  "reprice_threshold_bps":0.5,    // minimum move to trigger reprice
-  "ema_alpha":            0.05,   // EMA weight for volatility (~14-tick half-life)
-
-  "book_depth":           20,     // levels to fetch in REST snapshot
   "paper_trading":        true,   // false = live orders
-  "status_interval_ms":   1000    // console status print frequency
+  "status_interval_ms":   1000,
+
+  "telemetry": {
+    "enabled":            true,
+    "transport":          "udp",
+    "host":               "127.0.0.1",
+    "port":               9101,
+    "flush_interval_ms":  2
+  },
+
+  "pairs": [
+    {
+      "symbol": "BTC-USD",
+      "gamma": 0.1,
+      "sigma": 0.02,
+      "k": 1.5,
+      "T": 60.0,
+      "base_qty": 0.001,
+      "max_inventory": 0.01,
+      "min_spread_bps": 1.0,
+      "reprice_threshold_bps": 0.5,
+      "ema_alpha": 0.05,
+      "book_depth": 20
+    }
+  ]
 }
 ```
 
-**Testnet vs mainnet endpoints:**
+`pairs` supports multi-symbol configs. Internally it is stored as a symbol-keyed map.
+
+Telemetry: C++ emits feed events to UDP; ingest service listens on the same `host:port` and persists batches.
+
+**Common endpoints:**
 
 | Mode | ws_endpoint | rest_endpoint |
 |---|---|---|
-| Testnet | `wss://testnet.binance.vision` | `https://testnet.binance.vision` |
-| Mainnet | `wss://stream.binance.com:9443` | `https://api.binance.com` |
+| Binance Testnet | `wss://testnet.binance.vision` | `https://testnet.binance.vision` |
+| Binance Mainnet | `wss://stream.binance.com:9443` | `https://api.binance.com` |
+| Coinbase | `wss://advanced-trade-ws.coinbase.com` | `https://api.coinbase.com` |
 
 ---
 
@@ -471,6 +516,12 @@ sudo apt install libcurl4-openssl-dev libssl-dev cmake build-essential
 # Fedora / RHEL
 sudo dnf install libcurl-devel openssl-devel cmake gcc-c++
 ```
+
+Sidecar dependencies:
+
+- Ingest service (`services/ingest-fastapi`): Python 3.11+, `pip install -r requirements.txt`
+- Dashboard (`services/dashboard-react`): Node.js 18+, `npm install`
+- Database: PostgreSQL (TimescaleDB optional but recommended)
 
 ---
 
@@ -499,30 +550,80 @@ The build produces:
 ## Running
 
 ```bash
-# Paper trading against Binance testnet (default config)
+# Run only C++ engine
 ./build/hfmm
 
 # Custom config path
 ./build/hfmm /path/to/my_config.json
 ```
 
+### Full stack startup
+
+Terminal 1 (ingest):
+```bash
+cd services/ingest-fastapi
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Terminal 2 (dashboard):
+```bash
+cd services/dashboard-react
+npm install
+npm run dev
+```
+
+Terminal 3 (engine):
+```bash
+./build/hfmm
+```
+
+Helper script:
+```bash
+./start.sh
+```
+
+Post-start checks:
+```bash
+curl -s http://localhost:8000/health
+curl -s http://localhost:8000/api/latest
+ss -lunp | grep ':9101' || true
+ss -ltnp | grep ':5173\|:8000' || true
+```
+
 Sample console output:
 
 ```
 [main] HF Market Maker starting
-  symbol:        BTCUSDT
+  exchange:      coinbase
   paper_trading: yes
-  gamma:         0.1
+  pairs:         2
   ...
-[engine] Connecting to Binance WebSocket...
-[engine] Connected. Fetching snapshot...
-[engine] Snapshot received. Starting strategy loop.
+[engine] Connecting to coinbase WebSocket...
+[engine] Connected. Starting strategy loop.
 [status] mid=84123.5000 bid=84122.9500 ask=84124.0500 spread=0.1312bps inv_base=0.0000 inv_quote=1000.0000 pnl=0.0000 sigma=0.0198
 [status] mid=84124.0000 bid=84123.4500 ask=84124.5500 spread=0.1311bps inv_base=0.0010 inv_quote=915.8769 pnl=0.0231 sigma=0.0201
 ...
 ```
 
 Stop with `Ctrl+C` (SIGINT) or `kill <pid>` (SIGTERM).
+
+Common runtime issues:
+
+- `OSError: [Errno 98] Address already in use` on ingest startup:
+  another process already bound UDP `9101`.
+  ```bash
+  ss -lunp | grep ':9101'
+  ps -ef | grep -E 'uvicorn|app.main:app' | grep -v grep
+  ```
+
+- `Port 5173 already in use` from Vite:
+  ```bash
+  npm run dev -- --host 0.0.0.0 --port 5174
+  ```
+
+- `asyncpg.exceptions.InvalidPasswordError`:
+  set `HFMM_DATABASE_URL`, or export `POSTGRES_USER` + `POSTGRES_PASSWORD`
+  (fallback is supported by ingest settings).
 
 ---
 

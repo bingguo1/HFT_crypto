@@ -5,6 +5,8 @@
 
 namespace hfmm {
 
+class MarketEventExporter;
+
 // Coinbase Advanced Trade WebSocket feed.
 // Endpoint: wss://advanced-trade-ws.coinbase.com
 // Channel: level2 — first message is a full book snapshot, subsequent messages
@@ -12,7 +14,7 @@ namespace hfmm {
 // Symbol format: "BTC-USD" (not "BTCUSDT").
 class CoinbaseFeed : public IMarketDataFeed {
 public:
-    CoinbaseFeed(const Config& cfg, BookEventQueue& queue);
+    CoinbaseFeed(const Config& cfg, BookEventQueue& queue, MarketEventExporter* telemetry = nullptr);
     ~CoinbaseFeed() override;
 
     void start() override;
@@ -25,6 +27,7 @@ private:
 
     const Config&     cfg_;
     BookEventQueue&   queue_;
+    MarketEventExporter* telemetry_{nullptr};
     ix::WebSocket     ws_;
     std::atomic<bool> connected_{false};
     uint64_t          last_sequence_num_{0};

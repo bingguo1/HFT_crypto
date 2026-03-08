@@ -5,6 +5,8 @@
 
 namespace hfmm {
 
+class MarketEventExporter;
+
 using BookEventQueue = SpscRingBuffer<BookUpdateEvent, 1024>;
 
 class IMarketDataFeed {
@@ -16,6 +18,8 @@ public:
 };
 
 // Factory: creates CoinbaseFeed, BinanceFeed, or BinanceUSFeed based on cfg.exchange
-std::unique_ptr<IMarketDataFeed> make_feed(const Config& cfg, BookEventQueue& queue);
+std::unique_ptr<IMarketDataFeed> make_feed(const Config& cfg,
+                                           BookEventQueue& queue,
+                                           MarketEventExporter* telemetry = nullptr);
 
 } // namespace hfmm

@@ -47,9 +47,9 @@ private:
     Config           cfg_;
     BookEventQueue   queue_;
     BinanceRest      rest_;
+    MarketEventExporter telemetry_;
     std::unique_ptr<IMarketDataFeed> feed_;
     std::unordered_map<std::string, PairState> pairs_;
-    MarketEventExporter telemetry_;
 
     std::thread      strategy_thread_;
     std::atomic<bool> running_{false};

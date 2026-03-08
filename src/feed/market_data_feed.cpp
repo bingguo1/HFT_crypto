@@ -4,11 +4,13 @@
 
 namespace hfmm {
 
-std::unique_ptr<IMarketDataFeed> make_feed(const Config& cfg, BookEventQueue& queue) {
+std::unique_ptr<IMarketDataFeed> make_feed(const Config& cfg,
+                                           BookEventQueue& queue,
+                                           MarketEventExporter* telemetry) {
     if (cfg.exchange == "binance" || cfg.exchange == "binance_us") {
-        return std::make_unique<BinanceFeed>(cfg, queue);
+        return std::make_unique<BinanceFeed>(cfg, queue, telemetry);
     }
-    return std::make_unique<CoinbaseFeed>(cfg, queue);
+    return std::make_unique<CoinbaseFeed>(cfg, queue, telemetry);
 }
 
 } // namespace hfmm

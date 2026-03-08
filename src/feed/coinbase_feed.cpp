@@ -1,4 +1,5 @@
 #include "hfmm/feed/coinbase_feed.hpp"
+#include "hfmm/monitoring/market_event_exporter.hpp"
 #include <simdjson.h>
 #include <charconv>
 #include <algorithm>
@@ -7,8 +8,10 @@
 
 namespace hfmm {
 
-CoinbaseFeed::CoinbaseFeed(const Config& cfg, BookEventQueue& queue)
-    : cfg_(cfg), queue_(queue) {}
+CoinbaseFeed::CoinbaseFeed(const Config& cfg,
+                           BookEventQueue& queue,
+                           MarketEventExporter* telemetry)
+    : cfg_(cfg), queue_(queue), telemetry_(telemetry) {}
 
 CoinbaseFeed::~CoinbaseFeed() {
     stop();
@@ -172,6 +175,7 @@ bool CoinbaseFeed::parse_message(const char* data, std::size_t len) {
             copy_symbol(ev.symbol);
 
             while (!queue_.push(ev)) {}
+            if (telemetry_ != nullptr) telemetry_->enqueue(ev);
 
         } else { // "update"
             // Delta: a few price level changes per message.
@@ -206,6 +210,7 @@ bool CoinbaseFeed::parse_message(const char* data, std::size_t len) {
 
             if (ev.bid_count > 0 || ev.ask_count > 0) {
                 while (!queue_.push(ev)) {}
+                if (telemetry_ != nullptr) telemetry_->enqueue(ev);
             }
         }
     }
