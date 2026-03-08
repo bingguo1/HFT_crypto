@@ -4,8 +4,8 @@
 
 namespace hfmm {
 
-OrderManager::OrderManager(const Config& cfg, BinanceRest& rest)
-    : cfg_(cfg), rest_(rest) {
+OrderManager::OrderManager(const Config& cfg, const PairConfig& pcfg, BinanceRest& rest)
+    : cfg_(cfg), pcfg_(pcfg), rest_(rest) {
     // Start with some quote currency so we can buy
     inventory_quote_ = 1000.0; // USDT — paper initial balance
 }
@@ -81,11 +81,11 @@ bool OrderManager::should_reprice(Price old_price, Price new_price) const {
     if (old_price == 0) return true;
     double diff_bps = std::abs(static_cast<double>(new_price - old_price))
                       / static_cast<double>(old_price) * 10000.0;
-    return diff_bps > cfg_.reprice_threshold_bps;
+    return diff_bps > pcfg_.reprice_threshold_bps;
 }
 
 void OrderManager::place_bid(Price price, Quantity qty) {
-    auto resp = rest_.place_order(Side::Buy, price, qty);
+    auto resp = rest_.place_order(pcfg_.symbol, Side::Buy, price, qty);
     if (resp.success) {
         bid_.order_id  = resp.order_id;
         bid_.side      = Side::Buy;
@@ -98,7 +98,7 @@ void OrderManager::place_bid(Price price, Quantity qty) {
 }
 
 void OrderManager::place_ask(Price price, Quantity qty) {
-    auto resp = rest_.place_order(Side::Sell, price, qty);
+    auto resp = rest_.place_order(pcfg_.symbol, Side::Sell, price, qty);
     if (resp.success) {
         ask_.order_id  = resp.order_id;
         ask_.side      = Side::Sell;
@@ -112,7 +112,7 @@ void OrderManager::place_ask(Price price, Quantity qty) {
 
 void OrderManager::cancel_bid() {
     if (bid_.active) {
-        rest_.cancel_order(bid_.order_id);
+        rest_.cancel_order(pcfg_.symbol, bid_.order_id);
         bid_.active = false;
         bid_.status = OrderStatus::Cancelled;
     }
@@ -120,7 +120,7 @@ void OrderManager::cancel_bid() {
 
 void OrderManager::cancel_ask() {
     if (ask_.active) {
-        rest_.cancel_order(ask_.order_id);
+        rest_.cancel_order(pcfg_.symbol, ask_.order_id);
         ask_.active = false;
         ask_.status = OrderStatus::Cancelled;
     }

@@ -27,6 +27,8 @@ private:
     BookEventQueue&   queue_;
     ix::WebSocket     ws_;
     std::atomic<bool> connected_{false};
+    uint64_t          last_sequence_num_{0};
+    bool              has_sequence_num_{false};
 };
 
 } // namespace hfmm

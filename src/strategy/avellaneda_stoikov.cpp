@@ -4,8 +4,8 @@
 
 namespace hfmm {
 
-AvellanedaStoikov::AvellanedaStoikov(const Config& cfg)
-    : cfg_(cfg), sigma_(cfg.sigma) {}
+AvellanedaStoikov::AvellanedaStoikov(const PairConfig& pcfg)
+    : pcfg_(pcfg), sigma_(pcfg.sigma) {}
 
 void AvellanedaStoikov::update_volatility(double mid_price) {
     if (mid_count_ == 0) {
@@ -17,7 +17,7 @@ void AvellanedaStoikov::update_volatility(double mid_price) {
         double log_ret = std::log(mid_price / prev_mid_);
         double sq      = log_ret * log_ret;
         // EMA of squared log-returns
-        sigma_ = std::sqrt(cfg_.ema_alpha * sq + (1.0 - cfg_.ema_alpha) * sigma_ * sigma_);
+        sigma_ = std::sqrt(pcfg_.ema_alpha * sq + (1.0 - pcfg_.ema_alpha) * sigma_ * sigma_);
     }
     prev_mid_ = mid_price;
     ++mid_count_;
@@ -33,10 +33,10 @@ QuoteDecision AvellanedaStoikov::compute_quotes(const OrderBook& book,
 
     const double s    = *mid_opt;
     const double q    = inventory;
-    const double gamma = cfg_.gamma;
+    const double gamma = pcfg_.gamma;
     const double sigma = sigma_;
-    const double k    = cfg_.k;
-    const double tau  = std::max(cfg_.T - elapsed_seconds, 0.001); // (T-t)
+    const double k    = pcfg_.k;
+    const double tau  = std::max(pcfg_.T - elapsed_seconds, 0.001); // (T-t)
 
     // Reservation price: r = s - q * γ * σ² * τ
     const double r = s - q * gamma * sigma * sigma * tau;
@@ -49,7 +49,7 @@ QuoteDecision AvellanedaStoikov::compute_quotes(const OrderBook& book,
     double ask_d = r + delta / 2.0;
 
     // Spread floor
-    const double min_spread = s * cfg_.min_spread_bps * 1e-4;
+    const double min_spread = s * pcfg_.min_spread_bps * 1e-4;
     if ((ask_d - bid_d) < min_spread) {
         const double adj = (min_spread - (ask_d - bid_d)) / 2.0;
         bid_d -= adj;
@@ -57,16 +57,16 @@ QuoteDecision AvellanedaStoikov::compute_quotes(const OrderBook& book,
     }
 
     // Inventory scaling: reduce qty as |q| approaches max_inventory
-    double inv_ratio = std::abs(q) / cfg_.max_inventory;
+    double inv_ratio = std::abs(q) / pcfg_.max_inventory;
     inv_ratio = std::min(inv_ratio, 1.0);
     double qty_scale = 1.0 - inv_ratio;
 
     // If long, prefer to sell → lower bid qty; if short, prefer to buy → lower ask qty
-    double bid_qty_d = cfg_.base_qty * (q >= 0.0 ? qty_scale : 1.0);
-    double ask_qty_d = cfg_.base_qty * (q <= 0.0 ? qty_scale : 1.0);
+    double bid_qty_d = pcfg_.base_qty * (q >= 0.0 ? qty_scale : 1.0);
+    double ask_qty_d = pcfg_.base_qty * (q <= 0.0 ? qty_scale : 1.0);
 
     // Ensure minimum qty
-    const double min_qty = cfg_.base_qty * 0.1;
+    const double min_qty = pcfg_.base_qty * 0.1;
     bid_qty_d = std::max(bid_qty_d, min_qty);
     ask_qty_d = std::max(ask_qty_d, min_qty);
 

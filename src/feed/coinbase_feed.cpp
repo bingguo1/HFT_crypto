@@ -26,16 +26,26 @@ void CoinbaseFeed::start() {
 void CoinbaseFeed::stop() {
     ws_.stop();
     connected_.store(false, std::memory_order_relaxed);
+    has_sequence_num_ = false;
+    last_sequence_num_ = 0;
 }
 
 void CoinbaseFeed::on_message(const ix::WebSocketMessagePtr& msg) {
     switch (msg->type) {
     case ix::WebSocketMessageType::Open: {
         connected_.store(true, std::memory_order_release);
-        // Subscribe to level2 channel for the configured product
-        std::string sub = R"({"type":"subscribe","product_ids":[")"
-                        + cfg_.symbol
-                        + R"("],"channel":"level2"})";
+        has_sequence_num_ = false;
+        last_sequence_num_ = 0;
+        // Subscribe to level2 channel for all configured products
+        std::string sub = R"({"type":"subscribe","product_ids":[)";
+        size_t i = 0;
+        for (const auto& [sym, pc] : cfg_.pairs) {
+            if (i++ > 0) sub += ',';
+            sub += '"';
+            sub += pc.symbol;
+            sub += '"';
+        }
+        sub += R"(],"channel":"level2"})";
         ws_.send(sub);
         break;
     }
@@ -67,8 +77,7 @@ void CoinbaseFeed::on_message(const ix::WebSocketMessagePtr& msg) {
 //   }]
 // }
 // new_quantity "0" means remove the price level.
-// sequence_num increments by 1 per message — used for gap detection via the
-// existing order book spot-fallback path (first_update_id == last_update_id+1).
+// sequence_num increments by 1 per l2_data message globally (across products).
 bool CoinbaseFeed::parse_message(const char* data, std::size_t len) {
     static thread_local simdjson::ondemand::parser parser;
     static thread_local simdjson::padded_string padded;
@@ -85,6 +94,16 @@ bool CoinbaseFeed::parse_message(const char* data, std::size_t len) {
     uint64_t seq_num = 0;
     doc["sequence_num"].get(seq_num); // best-effort; 0 is safe
 
+    if (seq_num != 0) {
+        if (has_sequence_num_ && seq_num != last_sequence_num_ + 1) {
+            std::cerr << "[coinbase_feed] Sequence gap detected (prev="
+                      << last_sequence_num_ << ", curr=" << seq_num
+                      << ") across l2_data events\n";
+        }
+        last_sequence_num_ = seq_num;
+        has_sequence_num_ = true;
+    }
+
     simdjson::ondemand::array events;
     if (doc["events"].get_array().get(events) != simdjson::SUCCESS) return false;
 
@@ -92,6 +111,23 @@ bool CoinbaseFeed::parse_message(const char* data, std::size_t len) {
         // Field order in event: type, product_id, updates
         std::string_view type;
         if (event_val["type"].get_string().get(type) != simdjson::SUCCESS) continue;
+
+        std::string_view product_id;
+        if (event_val["product_id"].get_string().get(product_id) != simdjson::SUCCESS) continue;
+
+        // Look up book_depth for this symbol
+        int book_depth = 20;
+        auto pair_it = cfg_.pairs.find(std::string(product_id));
+        if (pair_it != cfg_.pairs.end()) {
+            book_depth = pair_it->second.book_depth;
+        }
+
+        // Copy product_id into symbol buffer
+        auto copy_symbol = [&](char* sym_buf) {
+            size_t copy_len = std::min(product_id.size(), static_cast<size_t>(15));
+            for (size_t i = 0; i < copy_len; ++i) sym_buf[i] = product_id[i];
+            sym_buf[copy_len] = '\0';
+        };
 
         simdjson::ondemand::array updates;
         if (event_val["updates"].get_array().get(updates) != simdjson::SUCCESS) continue;
@@ -124,7 +160,7 @@ bool CoinbaseFeed::parse_message(const char* data, std::size_t len) {
             std::sort(asks.begin(), asks.end(),
                       [](const PriceLevel& a, const PriceLevel& b) { return a.price < b.price; });
 
-            int max_n = std::min(cfg_.book_depth, MAX_LEVELS);
+            int max_n = std::min(book_depth, MAX_LEVELS);
 
             BookUpdateEvent ev;
             ev.kind           = EventKind::Snapshot;
@@ -133,20 +169,21 @@ bool CoinbaseFeed::parse_message(const char* data, std::size_t len) {
             ev.ask_count      = static_cast<int>(std::min(static_cast<int>(asks.size()), max_n));
             for (int i = 0; i < ev.bid_count; ++i) ev.bids[i] = bids[i];
             for (int i = 0; i < ev.ask_count; ++i) ev.asks[i] = asks[i];
+            copy_symbol(ev.symbol);
 
             while (!queue_.push(ev)) {}
 
         } else { // "update"
-            // Delta: a few price level changes per message
-            // Map to EventKind::Delta using sequence_num for gap detection
-            // (order book spot-fallback: first_update_id == last_update_id + 1)
+            // Delta: a few price level changes per message.
+            // Coinbase sequence continuity is validated at feed-level.
             BookUpdateEvent ev;
             ev.kind            = EventKind::Delta;
             ev.first_update_id = seq_num;
             ev.final_update_id = seq_num;
-            ev.prev_update_id  = 0; // triggers spot gap-check in OrderBook
+            ev.prev_update_id  = 0;
             ev.bid_count       = 0;
             ev.ask_count       = 0;
+            copy_symbol(ev.symbol);
 
             for (auto upd_val : updates) {
                 // Field order: side, price_level, new_quantity (no event_time in updates)

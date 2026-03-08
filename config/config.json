@@ -1,20 +1,35 @@
 {
   "exchange": "coinbase",
-  "symbol": "BTC-USD",
-  "ws_endpoint": "wss://advanced-trade-ws.coinbase.com",
-  "rest_endpoint": "https://api.coinbase.com",
   "api_key": "",
   "api_secret": "",
-  "gamma": 0.1,
-  "sigma": 0.02,
-  "k": 1.5,
-  "T": 60.0,
-  "base_qty": 0.001,
-  "max_inventory": 0.01,
-  "min_spread_bps": 1.0,
-  "reprice_threshold_bps": 0.5,
-  "ema_alpha": 0.05,
-  "book_depth": 20,
   "paper_trading": true,
-  "status_interval_ms": 1000
+  "status_interval_ms": 1000,
+  "pairs": [
+    {
+      "symbol": "BTC-USD",
+      "gamma": 0.1,
+      "sigma": 0.02,
+      "k": 1.5,
+      "T": 60.0,
+      "base_qty": 0.001,
+      "max_inventory": 0.01,
+      "min_spread_bps": 1.0,
+      "reprice_threshold_bps": 0.5,
+      "ema_alpha": 0.05,
+      "book_depth": 20
+    },
+    {
+      "symbol": "ETH-USD",
+      "gamma": 0.1,
+      "sigma": 0.03,
+      "k": 1.5,
+      "T": 60.0,
+      "base_qty": 0.01,
+      "max_inventory": 0.1,
+      "min_spread_bps": 1.0,
+      "reprice_threshold_bps": 0.5,
+      "ema_alpha": 0.05,
+      "book_depth": 20
+    }
+  ]
 }

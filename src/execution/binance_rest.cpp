@@ -134,14 +134,14 @@ std::string BinanceRest::signed_query(const std::string& params) {
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
-RestResponse BinanceRest::fetch_depth_snapshot(int limit) {
+RestResponse BinanceRest::fetch_depth_snapshot(const std::string& symbol, int limit) {
     if (cfg_.paper_trading && !curl_) {
         // In paper mode without curl, we still need to fetch snapshot
         // Fall through to normal path if curl available, else return empty
         return {};
     }
     return get("/api/v3/depth",
-               "symbol=" + cfg_.symbol + "&limit=" + std::to_string(limit));
+               "symbol=" + symbol + "&limit=" + std::to_string(limit));
 }
 
 int64_t BinanceRest::fetch_server_time() {
@@ -159,7 +159,7 @@ int64_t BinanceRest::fetch_server_time() {
     }
 }
 
-OrderResponse BinanceRest::place_order(Side side, Price price, Quantity qty) {
+OrderResponse BinanceRest::place_order(const std::string& symbol, Side side, Price price, Quantity qty) {
     if (cfg_.paper_trading) {
         // Synthetic response
         OrderResponse r;
@@ -174,7 +174,7 @@ OrderResponse BinanceRest::place_order(Side side, Price price, Quantity qty) {
 
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(8);
-    oss << "symbol=" << cfg_.symbol
+    oss << "symbol=" << symbol
         << "&side="     << side_str
         << "&type=LIMIT"
         << "&timeInForce=GTC"
@@ -195,10 +195,10 @@ OrderResponse BinanceRest::place_order(Side side, Price price, Quantity qty) {
     return r;
 }
 
-bool BinanceRest::cancel_order(uint64_t order_id) {
+bool BinanceRest::cancel_order(const std::string& symbol, uint64_t order_id) {
     if (cfg_.paper_trading) return true;
 
-    std::string params = "symbol=" + cfg_.symbol +
+    std::string params = "symbol=" + symbol +
                          "&orderId=" + std::to_string(order_id);
     std::string body = signed_query(params);
 

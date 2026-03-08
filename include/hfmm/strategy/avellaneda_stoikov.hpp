@@ -7,7 +7,7 @@ namespace hfmm {
 
 class AvellanedaStoikov {
 public:
-    explicit AvellanedaStoikov(const Config& cfg);
+    explicit AvellanedaStoikov(const PairConfig& pcfg);
 
     // Update EMA volatility from a new mid-price observation
     void update_volatility(double mid_price);
@@ -23,7 +23,7 @@ public:
     bool   has_data()  const { return mid_count_ >= 2; }
 
 private:
-    const Config& cfg_;
+    PairConfig    pcfg_;
     double        sigma_;         // current EMA volatility estimate
     double        prev_mid_{0.0}; // previous mid for log-return
     int           mid_count_{0};  // number of observations so far

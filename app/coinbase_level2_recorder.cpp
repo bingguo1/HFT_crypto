@@ -22,6 +22,13 @@ void signal_handler(int) {
     g_shutdown.store(true, std::memory_order_release);
 }
 
+hfmm::PairConfig parse_pair_config(const json& j, const hfmm::PairConfig& defaults) {
+    hfmm::PairConfig pc = defaults;
+    if (j.contains("symbol")) pc.symbol = j["symbol"];
+    if (j.contains("book_depth")) pc.book_depth = j["book_depth"];
+    return pc;
+}
+
 hfmm::Config load_config(const std::string& path) {
     std::ifstream f(path);
     if (!f.is_open()) {
@@ -32,10 +39,28 @@ hfmm::Config load_config(const std::string& path) {
     auto j = json::parse(f);
     hfmm::Config cfg;
 
-    if (j.contains("symbol")) cfg.symbol = j["symbol"];
     if (j.contains("ws_endpoint")) cfg.ws_endpoint = j["ws_endpoint"];
     if (j.contains("rest_endpoint")) cfg.rest_endpoint = j["rest_endpoint"];
-    if (j.contains("book_depth")) cfg.book_depth = j["book_depth"];
+
+    // Prefer multi-pair config when available; keep top-level symbol fallback.
+    if (j.contains("pairs") && j["pairs"].is_array()) {
+        hfmm::PairConfig defaults;
+        defaults.symbol = "BTC-USD";
+        for (const auto& pair_j : j["pairs"]) {
+            auto pc = parse_pair_config(pair_j, defaults);
+            cfg.pairs[pc.symbol] = pc;
+        }
+    } else {
+        hfmm::PairConfig pc;
+        pc.symbol = "BTC-USD";
+        auto parsed = parse_pair_config(j, pc);
+        cfg.pairs[parsed.symbol] = parsed;
+    }
+
+    if (cfg.pairs.empty()) {
+        std::cerr << "[recorder] Config must include at least one symbol in pairs.\n";
+        std::exit(1);
+    }
 
     return cfg;
 }
@@ -83,9 +108,6 @@ int main(int argc, char** argv) {
 
     auto cfg = load_config(config_path);
     cfg.exchange = "coinbase";
-    if (cfg.symbol.find('-') == std::string::npos) {
-        cfg.symbol = "BTC-USD";
-    }
     if (cfg.ws_endpoint.find("coinbase") == std::string::npos) {
         cfg.ws_endpoint = "wss://advanced-trade-ws.coinbase.com";
     }
@@ -103,14 +125,19 @@ int main(int argc, char** argv) {
     hfmm::CoinbaseFeed feed(cfg, queue);
 
     std::cout << "[recorder] Connecting Coinbase level2\n"
-              << "  symbol:      " << cfg.symbol << "\n"
+              << "  symbols:     ";
+    std::size_t i = 0;
+    for (const auto& [sym, pc] : cfg.pairs) {
+        if (i++ > 0) std::cout << ", ";
+        std::cout << pc.symbol;
+    }
+    std::cout << "\n"
               << "  ws_endpoint: " << cfg.ws_endpoint << "\n"
               << "  output:      " << output_path << "\n";
     if (max_events > 0) {
         std::cout << "  max_events:  " << max_events << "\n";
     }
-    std::cout
-              << "Press Ctrl+C to stop.\n";
+    std::cout << "Press Ctrl+C to stop.\n";
 
     feed.start();
 
@@ -129,7 +156,7 @@ int main(int argc, char** argv) {
         json row = {
             {"ts_ms", ts_ms},
             {"exchange", "coinbase"},
-            {"symbol", cfg.symbol},
+            {"symbol", evt->symbol},
             {"event", event_to_json(*evt)}
         };
 

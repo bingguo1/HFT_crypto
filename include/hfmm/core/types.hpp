@@ -2,6 +2,8 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace hfmm {
 
@@ -37,6 +39,8 @@ struct BookUpdateEvent {
     uint64_t   final_update_id{0}; // u
     uint64_t   prev_update_id{0};  // pu (futures: prev event's u, for gap detection)
     uint64_t   last_update_id{0};  // lastUpdateId (snapshot)
+
+    char       symbol[16]{};       // e.g. "BTC-USD\0"
 
     int        bid_count{0};
     int        ask_count{0};
@@ -75,19 +79,10 @@ struct Order {
 };
 
 // -----------------------------------------------------------------------
-// Config — loaded from config.json
+// PairConfig — per-symbol A-S parameters
 // -----------------------------------------------------------------------
-struct Config {
-    // Exchange selector: "coinbase" (default), "binance", "binance_us"
-    std::string exchange{"coinbase"};
-
-    std::string symbol{"BTC-USD"};
-    std::string ws_endpoint{"wss://advanced-trade-ws.coinbase.com"};
-    std::string rest_endpoint{"https://api.coinbase.com"};
-    std::string api_key{};
-    std::string api_secret{};
-
-    // A-S parameters
+struct PairConfig {
+    std::string symbol;
     double gamma{0.1};
     double sigma{0.02};
     double k{1.5};
@@ -97,12 +92,25 @@ struct Config {
     double min_spread_bps{1.0};
     double reprice_threshold_bps{0.5};
     double ema_alpha{0.05};
-
     int    book_depth{20};
-    bool   paper_trading{true};
+};
 
-    // Status print interval ms
+// -----------------------------------------------------------------------
+// Config — loaded from config.json (global / exchange-level fields)
+// -----------------------------------------------------------------------
+struct Config {
+    // Exchange selector: "coinbase" (default), "binance", "binance_us"
+    std::string exchange{"coinbase"};
+
+    std::string ws_endpoint{"wss://advanced-trade-ws.coinbase.com"};
+    std::string rest_endpoint{"https://api.coinbase.com"};
+    std::string api_key{};
+    std::string api_secret{};
+
+    bool   paper_trading{true};
     int    status_interval_ms{1000};
+
+    std::unordered_map<std::string, PairConfig> pairs; // key: symbol
 };
 
 } // namespace hfmm

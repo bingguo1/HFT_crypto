@@ -14,11 +14,16 @@ BinanceFeed::~BinanceFeed() {
 }
 
 void BinanceFeed::start() {
-    std::string symbol_lc = cfg_.symbol;
-    std::transform(symbol_lc.begin(), symbol_lc.end(), symbol_lc.begin(), ::tolower);
-    // Partial book depth stream — delivers a full top-N snapshot every 250 ms
-    std::string url = cfg_.ws_endpoint + "/ws/" + symbol_lc
-                      + "@depth" + std::to_string(cfg_.book_depth);
+    // Build combined stream URL: /stream?streams=btcusdt@depth20/ethusdt@depth5
+    std::string streams;
+    size_t i = 0;
+    for (const auto& [sym, pc] : cfg_.pairs) {
+        if (i++ > 0) streams += '/';
+        std::string sym_lc = pc.symbol;
+        std::transform(sym_lc.begin(), sym_lc.end(), sym_lc.begin(), ::tolower);
+        streams += sym_lc + "@depth" + std::to_string(pc.book_depth);
+    }
+    std::string url = cfg_.ws_endpoint + "/stream?streams=" + streams;
 
     ws_.setUrl(url);
     ws_.setOnMessageCallback([this](const ix::WebSocketMessagePtr& msg) {
@@ -58,7 +63,8 @@ void BinanceFeed::on_message(const ix::WebSocketMessagePtr& msg) {
     }
 }
 
-// Binance partial book depth stream: {"u":lastUpdateId, "b":[[price,qty],...], "a":...}
+// Binance combined stream message:
+// {"stream":"btcusdt@depth20","data":{"u":lastUpdateId,"b":[[price,qty],...],"a":...}}
 bool BinanceFeed::parse_snapshot(const char* data, std::size_t len, BookUpdateEvent& out) {
     static thread_local simdjson::ondemand::parser parser;
     static thread_local simdjson::padded_string padded;
@@ -67,8 +73,25 @@ bool BinanceFeed::parse_snapshot(const char* data, std::size_t len, BookUpdateEv
     simdjson::ondemand::document doc;
     if (parser.iterate(padded).get(doc) != simdjson::SUCCESS) return false;
 
+    // Extract stream name to derive symbol (e.g., "btcusdt@depth20" → "BTCUSDT")
+    std::string_view stream_name;
+    if (doc["stream"].get_string().get(stream_name) != simdjson::SUCCESS) return false;
+
+    auto at_pos = stream_name.find('@');
+    std::string_view sym_lc = (at_pos != std::string_view::npos)
+                               ? stream_name.substr(0, at_pos)
+                               : stream_name;
+    size_t copy_len = std::min(sym_lc.size(), static_cast<size_t>(15));
+    for (size_t i = 0; i < copy_len; ++i)
+        out.symbol[i] = static_cast<char>(::toupper(static_cast<unsigned char>(sym_lc[i])));
+    out.symbol[copy_len] = '\0';
+
+    // Navigate into data object
+    simdjson::ondemand::object data_obj;
+    if (doc["data"].get_object().get(data_obj) != simdjson::SUCCESS) return false;
+
     uint64_t u = 0;
-    if (doc["u"].get(u) != simdjson::SUCCESS) return false;
+    if (data_obj["u"].get(u) != simdjson::SUCCESS) return false;
 
     out.kind           = EventKind::Snapshot;
     out.last_update_id = u;
@@ -103,9 +126,9 @@ bool BinanceFeed::parse_snapshot(const char* data, std::size_t len, BookUpdateEv
     };
 
     simdjson::ondemand::array bids_arr, asks_arr;
-    if (doc["b"].get_array().get(bids_arr) == simdjson::SUCCESS)
+    if (data_obj["b"].get_array().get(bids_arr) == simdjson::SUCCESS)
         parse_levels(bids_arr, out.bids.data(), out.bid_count);
-    if (doc["a"].get_array().get(asks_arr) == simdjson::SUCCESS)
+    if (data_obj["a"].get_array().get(asks_arr) == simdjson::SUCCESS)
         parse_levels(asks_arr, out.asks.data(), out.ask_count);
 
     return true;

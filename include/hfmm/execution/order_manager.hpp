@@ -8,7 +8,7 @@ namespace hfmm {
 
 class OrderManager {
 public:
-    explicit OrderManager(const Config& cfg, BinanceRest& rest);
+    explicit OrderManager(const Config& cfg, const PairConfig& pcfg, BinanceRest& rest);
 
     // Called by strategy loop with new quote decision.
     // Handles repricing (avoid churn) and fill simulation (paper mode).
@@ -34,6 +34,7 @@ private:
     void cancel_ask();
 
     const Config& cfg_;
+    PairConfig    pcfg_;
     BinanceRest&  rest_;
 
     Order    bid_{};

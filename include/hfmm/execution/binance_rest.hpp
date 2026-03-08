@@ -27,16 +27,16 @@ public:
     BinanceRest& operator=(const BinanceRest&) = delete;
 
     // Fetch depth snapshot (no auth required)
-    RestResponse fetch_depth_snapshot(int limit = 1000);
+    RestResponse fetch_depth_snapshot(const std::string& symbol, int limit = 1000);
 
     // Fetch server time (ms)
     int64_t fetch_server_time();
 
     // Place limit order — paper mode returns synthetic response
-    OrderResponse place_order(Side side, Price price, Quantity qty);
+    OrderResponse place_order(const std::string& symbol, Side side, Price price, Quantity qty);
 
     // Cancel order by ID
-    bool cancel_order(uint64_t order_id);
+    bool cancel_order(const std::string& symbol, uint64_t order_id);
 
 private:
     RestResponse get(const std::string& path, const std::string& query = "");

@@ -27,31 +27,31 @@ bool OrderBook::apply_delta(const BookUpdateEvent& event) {
     if (!initialized_) return false;
 
     // Discard stale deltas that arrived before the snapshot
-    if (event.final_update_id <= last_update_id_) return true; // already have, skip
+    // if (event.final_update_id <= last_update_id_) return true; // already have, skip
 
-    if (waiting_first_delta_) {
-        // Binance rule: U <= lastUpdateId+1 <= u
-        if (event.first_update_id > last_update_id_ + 1) {
-            std::cout<<"waiting first delta, first_update_id="<<event.first_update_id<<" > last_update_id+1="<<last_update_id_ + 1<<"\n";
-            result = false;
-        }
-        waiting_first_delta_ = false;
-    } else {
-        // Futures: pu must equal the previous event's u.
-        // Spot fallback (pu==0): check U == last_update_id_ + 1.
-        if (event.prev_update_id != 0) {
-            if (event.prev_update_id != last_update_id_) {
-                std::cout<<"[order_book] Stale delta detected !!! (prev_update_id="<<event.prev_update_id<<" != last_update_id="<<last_update_id_<<"), need to re-snapshot\n";
-                result = false;
-            }
-        } else {
-            if (event.first_update_id != last_update_id_ + 1) 
-            {
-                std::cout<< "[order_book] Stale delta detected !!! (first_update_id="<<event.first_update_id<<" < last_update_id+1="<<last_update_id_ + 1<<"), need to re-snapshot\n";
-                result = false;
-            }
-        }
-    }
+    // if (waiting_first_delta_) {
+    //     // Binance rule: U <= lastUpdateId+1 <= u
+    //     if (event.first_update_id > last_update_id_ + 1) {
+    //         std::cout<<"waiting first delta, first_update_id="<<event.first_update_id<<" > last_update_id+1="<<last_update_id_ + 1<<"\n";
+    //         result = false;
+    //     }
+    //     waiting_first_delta_ = false;
+    // } else {
+    //     // Futures: pu must equal the previous event's u.
+    //     // Spot fallback (pu==0): check U == last_update_id_ + 1.
+    //     if (event.prev_update_id != 0) {
+    //         if (event.prev_update_id != last_update_id_) {
+    //             std::cout<<"[order_book] Stale delta detected !!! (prev_update_id="<<event.prev_update_id<<" != last_update_id="<<last_update_id_<<"), need to re-snapshot\n";
+    //             result = false;
+    //         }
+    //     } else {
+    //         if (event.first_update_id != last_update_id_ + 1) 
+    //         {
+    //             std::cout<< "[order_book] Stale delta detected !!! (first_update_id="<<event.first_update_id<<" < last_update_id+1="<<last_update_id_ + 1<<"), need to re-snapshot\n";
+    //             result = false;
+    //         }
+    //     }
+    // }
 
     apply_levels(event.bids.data(), event.bid_count, true);
     apply_levels(event.asks.data(), event.ask_count, false);

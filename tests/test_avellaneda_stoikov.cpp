@@ -18,19 +18,20 @@ static OrderBook make_book(double bid, double ask) {
     return book;
 }
 
-// Helper: build default config
-static Config default_cfg() {
-    Config cfg;
-    cfg.gamma             = 0.1;
-    cfg.sigma             = 0.02;
-    cfg.k                 = 1.5;
-    cfg.T                 = 60.0;
-    cfg.base_qty          = 0.001;
-    cfg.max_inventory     = 0.01;
-    cfg.min_spread_bps    = 0.0; // disable floor for most tests
-    cfg.reprice_threshold_bps = 0.5;
-    cfg.ema_alpha         = 0.05;
-    return cfg;
+// Helper: build default per-pair config
+static PairConfig default_cfg() {
+    PairConfig pc;
+    pc.symbol             = "BTC-USD";
+    pc.gamma             = 0.1;
+    pc.sigma             = 0.02;
+    pc.k                 = 1.5;
+    pc.T                 = 60.0;
+    pc.base_qty          = 0.001;
+    pc.max_inventory     = 0.01;
+    pc.min_spread_bps    = 0.0; // disable floor for most tests
+    pc.reprice_threshold_bps = 0.5;
+    pc.ema_alpha         = 0.05;
+    return pc;
 }
 
 // -----------------------------------------------------------------------

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <unordered_map>
 #include "hfmm/core/types.hpp"
 #include "hfmm/core/ring_buffer.hpp"
 #include "hfmm/core/order_book.hpp"
@@ -12,6 +13,20 @@
 #include "hfmm/execution/order_manager.hpp"
 
 namespace hfmm {
+
+struct PairState {
+    PairConfig         pcfg;
+    OrderBook          book;
+    AvellanedaStoikov  strategy;
+    OrderManager       order_mgr;
+    std::chrono::steady_clock::time_point start_time;
+
+    PairState(const PairConfig& pc, const Config& gc, BinanceRest& rest)
+        : pcfg(pc)
+        , strategy(pc)
+        , order_mgr(gc, pc, rest)
+        , start_time(std::chrono::steady_clock::now()) {}
+};
 
 class Engine {
 public:
@@ -30,18 +45,13 @@ private:
 
     Config           cfg_;
     BookEventQueue   queue_;
-    OrderBook        book_;
     BinanceRest      rest_;
     std::unique_ptr<IMarketDataFeed> feed_;
-    AvellanedaStoikov strategy_;
-    OrderManager     order_mgr_;
+    std::unordered_map<std::string, PairState> pairs_;
 
     std::thread      strategy_thread_;
     std::atomic<bool> running_{false};
     std::atomic<uint64_t> events_processed_{0};
-
-    // For elapsed time in A-S time horizon
-    std::chrono::steady_clock::time_point start_time_;
 };
 
 } // namespace hfmm
