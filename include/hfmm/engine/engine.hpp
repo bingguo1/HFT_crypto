@@ -38,6 +38,7 @@ private:
 
     std::thread      strategy_thread_;
     std::atomic<bool> running_{false};
+    std::atomic<uint64_t> events_processed_{0};
 
     // For elapsed time in A-S time horizon
     std::chrono::steady_clock::time_point start_time_;

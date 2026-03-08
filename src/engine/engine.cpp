@@ -20,6 +20,7 @@ Engine::~Engine() {
 void Engine::run() {
     running_.store(true, std::memory_order_release);
     start_time_ = std::chrono::steady_clock::now();
+    events_processed_.store(0, std::memory_order_relaxed);
 
     // Start WebSocket feed (runs on ixwebsocket internal thread)
     feed_->start();
@@ -42,6 +43,9 @@ void Engine::run() {
 
     // Main thread: periodic status print
     auto last_status = std::chrono::steady_clock::now();
+    auto last_feed_stats = last_status;
+    uint64_t last_event_count = 0;
+    constexpr auto kFeedStatsInterval = std::chrono::seconds(10);
     while (running_.load(std::memory_order_relaxed)) {
         auto now = std::chrono::steady_clock::now();
         auto ms  = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -49,6 +53,22 @@ void Engine::run() {
         if (ms >= cfg_.status_interval_ms) {
             print_status();
             last_status = now;
+        }
+
+        if (now - last_feed_stats >= kFeedStatsInterval) {
+            const auto total = events_processed_.load(std::memory_order_relaxed);
+            const auto window = total - last_event_count;
+            const auto secs = std::chrono::duration_cast<std::chrono::seconds>(
+                now - last_feed_stats).count();
+            const double eps = secs > 0 ? static_cast<double>(window) / static_cast<double>(secs) : 0.0;
+
+            std::cout << std::fixed << std::setprecision(2)
+                      << "[feed] events=" << window
+                      << " in " << secs << "s"
+                      << " (" << eps << " ev/s), total=" << total << "\n";
+
+            last_feed_stats = now;
+            last_event_count = total;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -70,6 +90,8 @@ void Engine::strategy_loop() {
             std::this_thread::yield();
             continue;
         }
+
+        events_processed_.fetch_add(1, std::memory_order_relaxed);
 
         // Apply event to order book
         bool ok = false;
