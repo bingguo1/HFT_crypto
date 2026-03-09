@@ -11,7 +11,7 @@ set -euo pipefail
 #   INGEST_HTTP_PORT=8000
 #   DASHBOARD_PORT=5173
 #   INGEST_UDP_PORT=9101
-#   UVICORN_CMD="/home/bguo/miniconda3/envs/quant/bin/uvicorn"
+#   UVICORN_CMD="${HOME}/miniconda3/envs/quant/bin/uvicorn"
 #   HFMM_DATABASE_URL=postgresql://user:password@host:5432/hfmm
 #   AUTO_KILL_PORT_OCCUPIER=1
 #   ALLOW_PORT_FALLBACK=1
@@ -24,8 +24,8 @@ mkdir -p "$LOG_DIR"
 INGEST_HTTP_PORT="${INGEST_HTTP_PORT:-8000}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-5173}"
 UVICORN_CMD="${UVICORN_CMD:-uvicorn}"
-QUANT_UVICORN="/home/bguo/miniconda3/envs/quant/bin/uvicorn"
-QUANT_PYTHON="/home/bguo/miniconda3/envs/quant/bin/python"
+QUANT_UVICORN="${HOME}/miniconda3/envs/quant/bin/uvicorn"
+QUANT_PYTHON="${HOME}/miniconda3/envs/quant/bin/python"
 
 # If 1, try to free conflicting ports by terminating occupier process.
 AUTO_KILL_PORT_OCCUPIER="${AUTO_KILL_PORT_OCCUPIER:-1}"

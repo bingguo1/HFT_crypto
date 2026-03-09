@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg14
+    container_name: hfmm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-hfmm}
+    ports:
+      - "5433:5432" ### left: host, right: container
+    volumes:
+      - hfmm_pgdata:/var/lib/postgresql/data
+      - ./services/ingest-fastapi/sql/001_init_market_events.sql:/docker-entrypoint-initdb.d/001_init_market_events.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-hfmm}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  ingest:
+    build:
+      context: ./services/ingest-fastapi
+      dockerfile: Dockerfile
+    container_name: hfmm-ingest
+    restart: unless-stopped
+    environment:
+      HFMM_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-hfmm}
+      HFMM_UDP_HOST: 0.0.0.0
+      HFMM_UDP_PORT: 9101
+      HFMM_BATCH_SIZE: 500
+      HFMM_BATCH_INTERVAL_MS: 100
+    ports:
+      - "8000:8000"
+      - "9101:9101/udp"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  dashboard:
+    build:
+      context: ./services/dashboard-react
+      dockerfile: Dockerfile
+    container_name: hfmm-dashboard
+    restart: unless-stopped
+    environment:
+      # Browser-side defaults in App.jsx already use window hostname -> :8000.
+      # Set these only if you want explicit endpoints.
+      # VITE_INGEST_HTTP: http://localhost:8000
+      # VITE_INGEST_WS: ws://localhost:8000/ws/market
+      NODE_ENV: development
+    ports:
+      - "5173:5173"
+    depends_on:
+      ingest:
+        condition: service_healthy
+
+volumes:
+  hfmm_pgdata:
