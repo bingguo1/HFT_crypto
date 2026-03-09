@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 
-const INGEST_HTTP = import.meta.env.VITE_INGEST_HTTP || 'http://localhost:8000';
-const INGEST_WS = import.meta.env.VITE_INGEST_WS || 'ws://localhost:8000/ws/market';
+const DEFAULT_HOST = window.location.hostname || 'localhost';
+const DEFAULT_HTTP_SCHEME = window.location.protocol === 'https:' ? 'https' : 'http';
+const DEFAULT_WS_SCHEME = window.location.protocol === 'https:' ? 'wss' : 'ws';
+
+const INGEST_HTTP = import.meta.env.VITE_INGEST_HTTP || `${DEFAULT_HTTP_SCHEME}://${DEFAULT_HOST}:8000`;
+const INGEST_WS = import.meta.env.VITE_INGEST_WS || `${DEFAULT_WS_SCHEME}://${DEFAULT_HOST}:8000/ws/market`;
 
 export default function App() {
   const [latest, setLatest] = useState({});

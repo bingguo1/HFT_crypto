@@ -70,21 +70,24 @@ static hfmm::Config load_config(const std::string& path) {
         if (t.contains("flush_interval_ms")) cfg.telemetry.flush_interval_ms = t["flush_interval_ms"];
     }
 
-    // 4. Parse pairs array or fall back to backwards-compat single-pair fields
+    // 4. Build global pair defaults from top-level fields.
+    // Any pair entry can override these values selectively.
+    hfmm::PairConfig global_defaults;
+    if (cfg.exchange == "binance" || cfg.exchange == "binance_us")
+        global_defaults.symbol = "BTCUSDT";
+    else
+        global_defaults.symbol = "BTC-USD";
+    global_defaults = parse_pair_config(j, global_defaults);
+
+    // 5. Parse pairs array or fall back to backwards-compat single-pair fields
     if (j.contains("pairs") && j["pairs"].is_array()) {
-        hfmm::PairConfig defaults;
         for (const auto& pair_j : j["pairs"]) {
-            auto pc = parse_pair_config(pair_j, defaults);
+            auto pc = parse_pair_config(pair_j, global_defaults);
             cfg.pairs[pc.symbol] = pc;
         }
     } else {
         // Backwards-compat: single pair from top-level fields
-        hfmm::PairConfig pc;
-        if (cfg.exchange == "binance" || cfg.exchange == "binance_us")
-            pc.symbol = "BTCUSDT";
-        else
-            pc.symbol = "BTC-USD";
-        auto parsed = parse_pair_config(j, pc);
+        auto parsed = parse_pair_config(j, global_defaults);
         cfg.pairs[parsed.symbol] = parsed;
     }
 

@@ -16,14 +16,17 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# Fallback for users who already export POSTGRES_* variables in shell config.
-if "HFMM_DATABASE_URL" not in os.environ:
-    pg_user = os.getenv("POSTGRES_USER")
-    pg_password = os.getenv("POSTGRES_PASSWORD")
+DEFAULT_DB_URL = "postgresql://postgres:postgres@localhost:5432/hfmm"
+
+# Fallback for users who export POSTGRES_*/PG* credentials.
+# We only override when database_url is still the default placeholder URL.
+if settings.database_url == DEFAULT_DB_URL:
+    pg_user = os.getenv("POSTGRES_USER") or os.getenv("PGUSER")
+    pg_password = os.getenv("POSTGRES_PASSWORD") or os.getenv("PGPASSWORD")
     if pg_user and pg_password:
-        pg_host = os.getenv("POSTGRES_HOST", "localhost")
-        pg_port = os.getenv("POSTGRES_PORT", "5432")
-        pg_db = os.getenv("POSTGRES_DB", "hfmm")
+        pg_host = os.getenv("POSTGRES_HOST") or os.getenv("PGHOST") or "localhost"
+        pg_port = os.getenv("POSTGRES_PORT") or os.getenv("PGPORT") or "5432"
+        pg_db = os.getenv("POSTGRES_DB") or os.getenv("PGDATABASE") or "hfmm"
         settings.database_url = (
             f"postgresql://{pg_user}:{pg_password}@{pg_host}:{pg_port}/{pg_db}"
         )
